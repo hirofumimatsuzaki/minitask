@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="manifest" href="./manifest.webmanifest">
+<meta name="theme-color" content="#2f5cff">
+  <title>Mini Task (Mobile)</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", sans-serif;
+      background: #f6f7fb;
+      color: #111;
+    }
+    .wrap {
+      max-width: 680px;
+      margin: 0 auto;
+      padding: 16px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 18px;
+      padding: 16px;
+      box-shadow: 0 8px 24px rgba(0,0,0,.06);
+    }
+    h1 {
+      font-size: 18px;
+      margin: 0 0 12px;
+    }
+    .row {
+      display: flex;
+      gap: 10px;
+      align-items: stretch;
+    }
+    /* input ではなく textarea を使う（IME変換確定で勝手に追加されない） */
+    input, textarea {
+      flex: 1;
+      font-size: 16px;
+      padding: 14px 14px;
+      border-radius: 14px;
+      border: 1px solid #e4e6ef;
+      outline: none;
+      resize: none;
+      line-height: 1.3;
+    }
+    input:focus, textarea:focus {
+      border-color: #b7c5ff;
+      box-shadow: 0 0 0 4px rgba(90,120,255,.12);
+    }
+    button {
+      font-size: 16px;
+      padding: 14px 16px;
+      border: 0;
+      border-radius: 14px;
+      background: #2f5cff;
+      color: #fff;
+      font-weight: 700;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      white-space: nowrap;
+    }
+    button:active { transform: translateY(1px); }
+
+    ul {
+      list-style: none;
+      padding: 0;
+      margin: 14px 0 0;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    li {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 14px 14px;
+      border-radius: 14px;
+      border: 1px solid #eef0f6;
+      background: #fbfbfe;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .text {
+      flex: 1;
+      font-size: 16px;
+      line-height: 1.3;
+      word-break: break-word;
+      white-space: pre-wrap; /* textareaの改行を保持 */
+    }
+    .done .text { text-decoration: line-through; opacity: .55; }
+    .actions { display: flex; gap: 8px; }
+    .ghost {
+      background: #eef1ff;
+      color: #2f5cff;
+      font-weight: 700;
+      padding: 10px 12px;
+      border-radius: 12px;
+      font-size: 14px;
+    }
+    .danger {
+      background: #ffecec;
+      color: #cc1f1a;
+      font-weight: 800;
+      padding: 10px 12px;
+      border-radius: 12px;
+      font-size: 14px;
+    }
+    .hint {
+      margin-top: 10px;
+      font-size: 13px;
+      color: #666;
+    }
+    .bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-top: 12px;
+      font-size: 13px;
+      color: #444;
+      flex-wrap: wrap;
+    }
+    .bar button {
+      padding: 10px 12px;
+      border-radius: 12px;
+      font-size: 14px;
+    }
+    .bar .mini { background:#111; }
+
+    @media (max-width: 420px) {
+      .row { flex-direction: column; }
+      button { width: 100%; }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>📝 Mini Task（タップで完了）</h1>
+
+      <div class="row">
+        <textarea id="taskInput" rows="2" placeholder="タスクを書く（例：メールを3通だけ返す）"></textarea>
+        <button id="addBtn">追加</button>
+      </div>
+
+      <div class="bar">
+        <div id="count">0件</div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <button class="ghost" id="clearDoneBtn" type="button">完了を削除</button>
+          <button class="mini" id="clearAllBtn" type="button">全部削除</button>
+        </div>
+      </div>
+
+      <ul id="taskList"></ul>
+
+      <div class="hint">
+        ・「追加」ボタンで登録（IME変換確定で勝手に追加されません）<br>
+        ・タスク行をタップすると完了/戻す（ボタンを押した時は除く）<br>
+        ・端末内（localStorage）に保存します
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const KEY = "mini_task_v1";
+
+    const input = document.getElementById("taskInput");
+    const list = document.getElementById("taskList");
+    const count = document.getElementById("count");
+    const addBtn = document.getElementById("addBtn");
+
+    function load() {
+      try { return JSON.parse(localStorage.getItem(KEY)) ?? []; }
+      catch { return []; }
+    }
+    function save(tasks) {
+      localStorage.setItem(KEY, JSON.stringify(tasks));
+    }
+
+    function escapeHtml(str) {
+      return str.replace(/[&<>"']/g, s => (
+        { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;" }[s]
+      ));
+    }
+
+    function render() {
+      const tasks = load();
+      list.innerHTML = "";
+
+      tasks.forEach((t, i) => {
+        const li = document.createElement("li");
+        li.className = t.done ? "done" : "";
+        li.innerHTML = `
+          <div class="text">${escapeHtml(t.text)}</div>
+          <div class="actions">
+            <button class="ghost" data-act="toggle" data-idx="${i}" type="button">${t.done ? "戻す" : "完了"}</button>
+            <button class="danger" data-act="del" data-idx="${i}" type="button">削除</button>
+          </div>
+        `;
+
+        // 行をタップで完了切替（ボタン以外）
+        li.addEventListener("click", (e) => {
+          const btn = e.target.closest("button");
+          if (btn) return;
+          toggle(i);
+        });
+
+        list.appendChild(li);
+      });
+
+      const total = tasks.length;
+      const done = tasks.filter(t => t.done).length;
+      count.textContent = `${total}件（完了 ${done}）`;
+    }
+
+    function addTask() {
+      const text = input.value.trim();
+      if (!text) return;
+
+      const tasks = load();
+      tasks.unshift({ text, done: false, ts: Date.now() });
+      save(tasks);
+
+      input.value = "";
+      input.focus();
+      render();
+    }
+
+    function toggle(idx) {
+      const tasks = load();
+      if (!tasks[idx]) return;
+      tasks[idx].done = !tasks[idx].done;
+      save(tasks);
+      render();
+    }
+
+    function del(idx) {
+      const tasks = load();
+      tasks.splice(idx, 1);
+      save(tasks);
+      render();
+    }
+
+    function clearDone() {
+      const tasks = load().filter(t => !t.done);
+      save(tasks);
+      render();
+    }
+
+    function clearAll() {
+      save([]);
+      render();
+    }
+
+    // 追加は「ボタンのみ」(EnterやIME変換確定で増えない)
+    addBtn.addEventListener("click", addTask);
+
+    // タスク操作ボタン（委譲）
+    document.addEventListener("click", (e) => {
+      const btn = e.target.closest("button");
+      if (!btn) return;
+
+      const act = btn.dataset.act;
+      if (!act) return;
+
+      const idx = Number(btn.dataset.idx);
+      if (act === "toggle") toggle(idx);
+      if (act === "del") del(idx);
+    });
+
+    document.getElementById("clearDoneBtn").addEventListener("click", clearDone);
+    document.getElementById("clearAllBtn").addEventListener("click", clearAll);
+
+    render();
+  </script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("./sw.js");
+      });
+    }
+  </script>
+</body>
+</html>
