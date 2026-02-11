@@ -173,15 +173,24 @@
     const addBtn = document.getElementById("addBtn");
 
     function load() {
-      try { return JSON.parse(localStorage.getItem(KEY)) ?? []; }
-      catch { return []; }
+      try {
+        const raw = JSON.parse(localStorage.getItem(KEY));
+        if (!Array.isArray(raw)) return [];
+        return raw.map((t) => ({
+          text: typeof t?.text === "string" ? t.text : "",
+          done: Boolean(t?.done),
+          ts: Number.isFinite(t?.ts) ? t.ts : Date.now()
+        })).filter((t) => t.text.trim() !== "");
+      } catch {
+        return [];
+      }
     }
     function save(tasks) {
       localStorage.setItem(KEY, JSON.stringify(tasks));
     }
 
     function escapeHtml(str) {
-      return str.replace(/[&<>"']/g, s => (
+      return String(str).replace(/[&<>"']/g, s => (
         { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;" }[s]
       ));
     }
