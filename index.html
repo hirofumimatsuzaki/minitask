@@ -123,11 +123,6 @@
       border-radius: 12px;
       font-size: 14px;
     }
-    .hint {
-      margin-top: 10px;
-      font-size: 13px;
-      color: #666;
-    }
     .bar {
       display: flex;
       justify-content: space-between;
@@ -137,6 +132,12 @@
       font-size: 13px;
       color: #444;
       flex-wrap: wrap;
+    }
+    .bottom-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 14px;
     }
     .bar button {
       padding: 10px 12px;
@@ -166,20 +167,14 @@
 
       <div class="bar">
         <div id="count">0件</div>
-        <div style="display:flex; gap:10px; flex-wrap:wrap;">
-          <button class="ghost" id="exportDoneBtn" type="button">完了をCSV</button>
-          <button class="ghost" id="clearDoneBtn" type="button">完了を削除</button>
-          <button class="mini" id="clearAllBtn" type="button">全部削除</button>
-        </div>
       </div>
 
       <ul id="taskList"></ul>
 
-      <div class="hint">
-        ・「追加」ボタンで登録（IME変換確定で勝手に追加されません）<br>
-        ・「音声入力」で話した内容を入力欄へ反映できます<br>
-        ・タスク行をタップすると完了/戻す（ボタンを押した時は除く）<br>
-        ・端末内（localStorage）に保存します
+      <div class="bottom-actions">
+        <button class="ghost" id="exportDoneBtn" type="button">完了をCSV</button>
+        <button class="ghost" id="clearDoneBtn" type="button">完了を削除</button>
+        <button class="mini" id="clearAllBtn" type="button">全部削除</button>
       </div>
     </div>
   </div>
