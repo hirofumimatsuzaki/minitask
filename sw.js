@@ -1,4 +1,4 @@
-const CACHE_NAME = "minitask-v2";
+const CACHE_NAME = "minitask-v3";
 const ASSETS = [
   "./",
   "./index.html",
@@ -9,9 +9,18 @@ const ASSETS = [
 ];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
-  );
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    await Promise.all(
+      ASSETS.map(async (asset) => {
+        try {
+          await cache.add(asset);
+        } catch {
+          // Keep install resilient even if one asset fails.
+        }
+      })
+    );
+  })());
   self.skipWaiting();
 });
 
@@ -26,7 +35,31 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
-  event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request))
-  );
+  const { request } = event;
+
+  if (request.mode === "navigate") {
+    event.respondWith((async () => {
+      try {
+        const fresh = await fetch(request);
+        const cache = await caches.open(CACHE_NAME);
+        cache.put(request, fresh.clone());
+        return fresh;
+      } catch {
+        return (await caches.match(request)) || (await caches.match("./index.html"));
+      }
+    })());
+    return;
+  }
+
+  event.respondWith((async () => {
+    const cached = await caches.match(request);
+    if (cached) return cached;
+
+    const fresh = await fetch(request);
+    if (fresh.ok && request.url.startsWith(self.location.origin)) {
+      const cache = await caches.open(CACHE_NAME);
+      cache.put(request, fresh.clone());
+    }
+    return fresh;
+  })());
 });
