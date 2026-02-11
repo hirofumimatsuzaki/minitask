@@ -61,6 +61,22 @@
       white-space: nowrap;
     }
     button:active { transform: translateY(1px); }
+    button:disabled {
+      opacity: .5;
+      cursor: not-allowed;
+    }
+    .voice {
+      background: #0f766e;
+    }
+    .voice.listening {
+      background: #b42318;
+    }
+    .voice-status {
+      margin-top: 8px;
+      font-size: 13px;
+      color: #0f766e;
+      min-height: 1.2em;
+    }
 
     ul {
       list-style: none;
@@ -143,8 +159,10 @@
 
       <div class="row">
         <textarea id="taskInput" rows="2" placeholder="タスクを書く（例：メールを3通だけ返す）"></textarea>
+        <button id="voiceBtn" class="voice" type="button">音声入力</button>
         <button id="addBtn">追加</button>
       </div>
+      <div id="voiceStatus" class="voice-status"></div>
 
       <div class="bar">
         <div id="count">0件</div>
@@ -158,6 +176,7 @@
 
       <div class="hint">
         ・「追加」ボタンで登録（IME変換確定で勝手に追加されません）<br>
+        ・「音声入力」で話した内容を入力欄へ反映できます<br>
         ・タスク行をタップすると完了/戻す（ボタンを押した時は除く）<br>
         ・端末内（localStorage）に保存します
       </div>
@@ -171,6 +190,12 @@
     const list = document.getElementById("taskList");
     const count = document.getElementById("count");
     const addBtn = document.getElementById("addBtn");
+    const voiceBtn = document.getElementById("voiceBtn");
+    const voiceStatus = document.getElementById("voiceStatus");
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let recognition = null;
+    let listening = false;
+    let voiceText = "";
 
     function load() {
       try {
@@ -238,6 +263,98 @@
       render();
     }
 
+    function joinTexts(base, addition) {
+      const a = base.trim();
+      const b = addition.trim();
+      if (!a) return b;
+      if (!b) return a;
+      return `${a} ${b}`;
+    }
+
+    function setVoiceStatus(message, isError = false) {
+      voiceStatus.textContent = message;
+      voiceStatus.style.color = isError ? "#b42318" : "#0f766e";
+    }
+
+    function updateVoiceButton() {
+      if (!SpeechRecognition) {
+        voiceBtn.disabled = true;
+        voiceBtn.classList.remove("listening");
+        setVoiceStatus("このブラウザは音声入力に対応していません。", true);
+        return;
+      }
+      voiceBtn.disabled = false;
+      voiceBtn.classList.toggle("listening", listening);
+      voiceBtn.textContent = listening ? "停止" : "音声入力";
+      if (!listening && !voiceStatus.textContent) {
+        setVoiceStatus("マイクを押して話してください。");
+      }
+    }
+
+    function setupVoiceInput() {
+      if (!SpeechRecognition) {
+        updateVoiceButton();
+        return;
+      }
+
+      recognition = new SpeechRecognition();
+      recognition.lang = "ja-JP";
+      recognition.interimResults = true;
+      recognition.continuous = false;
+
+      recognition.addEventListener("start", () => {
+        listening = true;
+        voiceText = input.value.trim();
+        updateVoiceButton();
+        setVoiceStatus("聞き取り中...");
+      });
+
+      recognition.addEventListener("result", (event) => {
+        let finalPart = "";
+        let interimPart = "";
+        for (let i = event.resultIndex; i < event.results.length; i += 1) {
+          const transcript = event.results[i][0]?.transcript ?? "";
+          if (event.results[i].isFinal) finalPart += transcript;
+          else interimPart += transcript;
+        }
+        if (finalPart) voiceText = joinTexts(voiceText, finalPart);
+        input.value = joinTexts(voiceText, interimPart);
+      });
+
+      recognition.addEventListener("error", (event) => {
+        if (event.error === "not-allowed") {
+          setVoiceStatus("マイク権限が拒否されました。ブラウザ設定を確認してください。", true);
+        } else if (event.error === "no-speech") {
+          setVoiceStatus("音声を認識できませんでした。もう一度お試しください。", true);
+        } else {
+          setVoiceStatus(`音声入力でエラーが発生しました: ${event.error}`, true);
+        }
+      });
+
+      recognition.addEventListener("end", () => {
+        listening = false;
+        updateVoiceButton();
+        if (!voiceStatus.textContent || voiceStatus.textContent === "聞き取り中...") {
+          setVoiceStatus("音声入力を終了しました。必要なら「追加」を押してください。");
+        }
+        input.focus();
+      });
+
+      voiceBtn.addEventListener("click", () => {
+        if (listening) {
+          recognition.stop();
+          return;
+        }
+        try {
+          recognition.start();
+        } catch {
+          setVoiceStatus("音声入力を開始できませんでした。少し待って再試行してください。", true);
+        }
+      });
+
+      updateVoiceButton();
+    }
+
     function toggle(idx) {
       const tasks = load();
       if (!tasks[idx]) return;
@@ -282,6 +399,7 @@
 
     document.getElementById("clearDoneBtn").addEventListener("click", clearDone);
     document.getElementById("clearAllBtn").addEventListener("click", clearAll);
+    setupVoiceInput();
 
     render();
   </script>
