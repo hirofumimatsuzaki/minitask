@@ -93,12 +93,18 @@
       display: flex;
       align-items: center;
       gap: 10px;
+      flex-wrap: wrap;
       color: #4b5563;
       font-size: 13px;
     }
     .bucket-picker select {
       min-width: 110px;
       height: 42px;
+    }
+    .entry-picker {
+      display: flex;
+      align-items: center;
+      gap: 10px;
     }
     .bar {
       display: flex;
@@ -189,6 +195,7 @@
       align-items: center;
       gap: 8px;
       margin-top: 8px;
+      flex-wrap: wrap;
     }
     .bucket-move {
       appearance: none;
@@ -201,6 +208,17 @@
       color: #4a5670;
       font-size: 13px;
       padding: 0 10px;
+    }
+    .kind-chip {
+      display: inline-flex;
+      align-items: center;
+      height: 34px;
+      padding: 0 10px;
+      border-radius: 10px;
+      background: #f1f4fb;
+      color: #6a7488;
+      font-size: 12px;
+      font-weight: 700;
     }
     .actions {
       display: flex;
@@ -268,7 +286,7 @@
 <body>
   <div class="wrap">
     <div class="card">
-      <h1>📝 Mini Task（チェックで完了）</h1>
+      <h1>📝 Mini Task</h1>
 
       <div class="row">
         <textarea id="taskInput" rows="2" placeholder="タスクを書く（例：メールを3通だけ返す）"></textarea>
@@ -277,12 +295,21 @@
       </div>
 
       <div class="bucket-picker">
-        <label for="bucketInput">追加先</label>
-        <select id="bucketInput">
-          <option value="today">今日</option>
-          <option value="week">今週</option>
-          <option value="later">いつか</option>
-        </select>
+        <div class="entry-picker">
+          <label for="kindInput">種類</label>
+          <select id="kindInput">
+            <option value="task">チェック付き</option>
+            <option value="note">メモ</option>
+          </select>
+        </div>
+        <div class="entry-picker">
+          <label for="bucketInput">追加先</label>
+          <select id="bucketInput">
+            <option value="today">今日</option>
+            <option value="week">今週</option>
+            <option value="later">いつか</option>
+          </select>
+        </div>
       </div>
 
       <div id="voiceStatus" class="voice-status"></div>
@@ -305,13 +332,20 @@
     const KEY = "mini_task_v1";
     const BUCKETS = ["today", "week", "later"];
     const DEFAULT_BUCKET = "today";
+    const KINDS = ["task", "note"];
+    const DEFAULT_KIND = "task";
     const BUCKET_LABELS = {
       today: "今日",
       week: "今週",
       later: "いつか"
     };
+    const KIND_LABELS = {
+      task: "チェック付き",
+      note: "メモ"
+    };
 
     const input = document.getElementById("taskInput");
+    const kindInput = document.getElementById("kindInput");
     const bucketInput = document.getElementById("bucketInput");
     const list = document.getElementById("taskList");
     const count = document.getElementById("count");
@@ -327,8 +361,16 @@
       return BUCKETS.includes(bucket) ? bucket : DEFAULT_BUCKET;
     }
 
+    function normalizeKind(kind) {
+      return KINDS.includes(kind) ? kind : DEFAULT_KIND;
+    }
+
     function bucketLabel(bucket) {
       return BUCKET_LABELS[normalizeBucket(bucket)];
+    }
+
+    function kindLabel(kind) {
+      return KIND_LABELS[normalizeKind(kind)];
     }
 
     function normalizeTask(task) {
@@ -336,7 +378,8 @@
         text: typeof task?.text === "string" ? task.text : "",
         done: Boolean(task?.done),
         ts: Number.isFinite(task?.ts) ? task.ts : Date.now(),
-        bucket: normalizeBucket(task?.bucket)
+        bucket: normalizeBucket(task?.bucket),
+        kind: normalizeKind(task?.kind)
       };
     }
 
@@ -353,7 +396,8 @@
               normalized.text !== task?.text ||
               normalized.done !== Boolean(task?.done) ||
               normalized.ts !== task?.ts ||
-              normalized.bucket !== task?.bucket
+              normalized.bucket !== task?.bucket ||
+              normalized.kind !== task?.kind
             ) {
               migrated = true;
             }
@@ -405,15 +449,18 @@
       const ul = document.createElement("ul");
       tasks.forEach(({ task, index }) => {
         const li = document.createElement("li");
-        li.className = task.done ? "done" : "";
+        li.className = task.done && task.kind === "task" ? "done" : "";
         li.innerHTML = `
           <div class="task-content">
-            <label class="check-wrap" aria-label="完了状態の切り替え">
-              <input class="check-toggle" data-act="toggle-check" data-idx="${index}" type="checkbox"${task.done ? " checked" : ""} />
-            </label>
+            ${task.kind === "task" ? `
+              <label class="check-wrap" aria-label="完了状態の切り替え">
+                <input class="check-toggle" data-act="toggle-check" data-idx="${index}" type="checkbox"${task.done ? " checked" : ""} />
+              </label>
+            ` : ""}
             <div class="task-main">
               <div class="text">${escapeHtml(task.text)}</div>
               <div class="task-meta">
+                <span class="kind-chip">${kindLabel(task.kind)}</span>
                 <select class="bucket-move" data-act="bucket" data-idx="${index}" aria-label="bucketの変更">
                   ${bucketOptions(task.bucket)}
                 </select>
@@ -428,6 +475,7 @@
         li.addEventListener("click", (event) => {
           const interactive = event.target.closest("button, select, input");
           if (interactive) return;
+          if (task.kind !== "task") return;
           toggle(index);
         });
 
@@ -450,8 +498,8 @@
       });
 
       const total = tasks.length;
-      const done = tasks.filter((task) => task.done).length;
-      const todayOpen = tasks.filter((task) => task.bucket === "today" && !task.done).length;
+      const done = tasks.filter((task) => task.kind === "task" && task.done).length;
+      const todayOpen = tasks.filter((task) => task.kind === "task" && task.bucket === "today" && !task.done).length;
       count.textContent = `${total}件（完了 ${done} / 今日 ${todayOpen}）`;
     }
 
@@ -464,7 +512,8 @@
         text,
         done: false,
         ts: Date.now(),
-        bucket: normalizeBucket(bucketInput.value)
+        bucket: normalizeBucket(bucketInput.value),
+        kind: normalizeKind(kindInput.value)
       });
       save(tasks);
 
@@ -568,6 +617,7 @@
     function toggle(idx) {
       const tasks = load();
       if (!tasks[idx]) return;
+      if (tasks[idx].kind !== "task") return;
       tasks[idx].done = !tasks[idx].done;
       save(tasks);
       render();
@@ -589,7 +639,7 @@
     }
 
     function clearDone() {
-      const tasks = load().filter((task) => !task.done);
+      const tasks = load().filter((task) => !(task.kind === "task" && task.done));
       save(tasks);
       render();
     }
@@ -605,15 +655,16 @@
     }
 
     function exportDoneCsv() {
-      const doneTasks = load().filter((task) => task.done);
+      const doneTasks = load().filter((task) => task.kind === "task" && task.done);
       if (doneTasks.length === 0) {
         setVoiceStatus("完了タスクがないため、CSVを出力しませんでした。", true);
         return;
       }
 
-      const header = ["task", "bucket", "created_at_iso", "done"];
+      const header = ["task", "kind", "bucket", "created_at_iso", "done"];
       const rows = doneTasks.map((task) => [
         task.text,
+        kindLabel(task.kind),
         bucketLabel(task.bucket),
         new Date(task.ts).toISOString(),
         "true"

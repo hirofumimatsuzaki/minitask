@@ -1,4 +1,4 @@
-const CACHE_NAME = "minitask-v8";
+const CACHE_NAME = "minitask-v9";
 const ASSETS = [
   "./",
   "./index.html",
