@@ -150,6 +150,26 @@
       user-select: none;
       -webkit-tap-highlight-color: transparent;
     }
+    .task-content {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+    .check-wrap {
+      display: flex;
+      align-items: center;
+      padding-top: 2px;
+    }
+    .check-toggle {
+      width: 22px;
+      height: 22px;
+      margin: 0;
+      accent-color: #2f5cff;
+      cursor: pointer;
+      flex: 0 0 auto;
+    }
     .task-main {
       flex: 1;
       min-width: 0;
@@ -233,6 +253,9 @@
         flex-direction: column;
         align-items: stretch;
       }
+      .task-content {
+        width: 100%;
+      }
       .actions {
         align-self: stretch;
       }
@@ -245,7 +268,7 @@
 <body>
   <div class="wrap">
     <div class="card">
-      <h1>📝 Mini Task（タップで完了）</h1>
+      <h1>📝 Mini Task（チェックで完了）</h1>
 
       <div class="row">
         <textarea id="taskInput" rows="2" placeholder="タスクを書く（例：メールを3通だけ返す）"></textarea>
@@ -384,22 +407,26 @@
         const li = document.createElement("li");
         li.className = task.done ? "done" : "";
         li.innerHTML = `
-          <div class="task-main">
-            <div class="text">${escapeHtml(task.text)}</div>
-            <div class="task-meta">
-              <select class="bucket-move" data-act="bucket" data-idx="${index}" aria-label="bucketの変更">
-                ${bucketOptions(task.bucket)}
-              </select>
+          <div class="task-content">
+            <label class="check-wrap" aria-label="完了状態の切り替え">
+              <input class="check-toggle" data-act="toggle-check" data-idx="${index}" type="checkbox"${task.done ? " checked" : ""} />
+            </label>
+            <div class="task-main">
+              <div class="text">${escapeHtml(task.text)}</div>
+              <div class="task-meta">
+                <select class="bucket-move" data-act="bucket" data-idx="${index}" aria-label="bucketの変更">
+                  ${bucketOptions(task.bucket)}
+                </select>
+              </div>
             </div>
           </div>
           <div class="actions">
-            <button class="ghost" data-act="toggle" data-idx="${index}" type="button">${task.done ? "戻す" : "完了"}</button>
             <button class="danger" data-act="del" data-idx="${index}" type="button">削除</button>
           </div>
         `;
 
         li.addEventListener("click", (event) => {
-          const interactive = event.target.closest("button, select");
+          const interactive = event.target.closest("button, select, input");
           if (interactive) return;
           toggle(index);
         });
@@ -624,6 +651,12 @@
     });
 
     document.addEventListener("change", (event) => {
+      const checkbox = event.target.closest("input[data-act='toggle-check']");
+      if (checkbox) {
+        toggle(Number(checkbox.dataset.idx));
+        return;
+      }
+
       const select = event.target.closest("select[data-act='bucket']");
       if (!select) return;
       moveBucket(Number(select.dataset.idx), select.value);
