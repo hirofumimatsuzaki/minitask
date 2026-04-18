@@ -159,22 +159,7 @@
     .task-content {
       flex: 1;
       min-width: 0;
-      display: flex;
-      align-items: flex-start;
-      gap: 12px;
-    }
-    .check-wrap {
-      display: flex;
-      align-items: center;
-      padding-top: 2px;
-    }
-    .check-toggle {
-      width: 22px;
-      height: 22px;
-      margin: 0;
-      accent-color: #2f5cff;
-      cursor: pointer;
-      flex: 0 0 auto;
+      display: block;
     }
     .task-main {
       flex: 1;
@@ -187,6 +172,36 @@
       white-space: pre-wrap;
     }
     .done .text {
+      text-decoration: line-through;
+      opacity: .55;
+    }
+    .checklist {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .check-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+    .check-item label {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      cursor: pointer;
+      flex: 1;
+      min-width: 0;
+    }
+    .check-toggle {
+      width: 22px;
+      height: 22px;
+      margin: 0;
+      accent-color: #2f5cff;
+      cursor: pointer;
+      flex: 0 0 auto;
+    }
+    .check-text.done {
       text-decoration: line-through;
       opacity: .55;
     }
@@ -373,13 +388,33 @@
       return KIND_LABELS[normalizeKind(kind)];
     }
 
+    function buildChecklistItems(task) {
+      const lines = String(task?.text ?? "")
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean);
+      const source = Array.isArray(task?.items) ? task.items : [];
+      const baseLines = lines.length > 0 ? lines : [String(task?.text ?? "").trim()].filter(Boolean);
+      const items = baseLines.map((text, index) => ({
+        text,
+        done: typeof source[index]?.done === "boolean" ? source[index].done : Boolean(task?.done)
+      }));
+      return items;
+    }
+
     function normalizeTask(task) {
+      const kind = normalizeKind(task?.kind);
+      const items = kind === "task" ? buildChecklistItems(task) : [];
+      const done = kind === "task"
+        ? items.length > 0 && items.every((item) => item.done)
+        : Boolean(task?.done);
       return {
         text: typeof task?.text === "string" ? task.text : "",
-        done: Boolean(task?.done),
+        done,
         ts: Number.isFinite(task?.ts) ? task.ts : Date.now(),
         bucket: normalizeBucket(task?.bucket),
-        kind: normalizeKind(task?.kind)
+        kind,
+        items
       };
     }
 
@@ -397,7 +432,8 @@
               normalized.done !== Boolean(task?.done) ||
               normalized.ts !== task?.ts ||
               normalized.bucket !== task?.bucket ||
-              normalized.kind !== task?.kind
+              normalized.kind !== task?.kind ||
+              JSON.stringify(normalized.items) !== JSON.stringify(Array.isArray(task?.items) ? task.items : [])
             ) {
               migrated = true;
             }
@@ -429,6 +465,28 @@
       )).join("");
     }
 
+    function renderChecklist(task, index) {
+      return `
+        <div class="checklist">
+          ${task.items.map((item, itemIndex) => `
+            <div class="check-item">
+              <label>
+                <input
+                  class="check-toggle"
+                  data-act="toggle-check-item"
+                  data-idx="${index}"
+                  data-item-idx="${itemIndex}"
+                  type="checkbox"
+                  ${item.done ? " checked" : ""}
+                />
+                <span class="text check-text${item.done ? " done" : ""}">${escapeHtml(item.text)}</span>
+              </label>
+            </div>
+          `).join("")}
+        </div>
+      `;
+    }
+
     function renderSection(bucket, tasks) {
       const section = document.createElement("section");
       section.className = "section";
@@ -452,13 +510,10 @@
         li.className = task.done && task.kind === "task" ? "done" : "";
         li.innerHTML = `
           <div class="task-content">
-            ${task.kind === "task" ? `
-              <label class="check-wrap" aria-label="完了状態の切り替え">
-                <input class="check-toggle" data-act="toggle-check" data-idx="${index}" type="checkbox"${task.done ? " checked" : ""} />
-              </label>
-            ` : ""}
             <div class="task-main">
-              <div class="text">${escapeHtml(task.text)}</div>
+              ${task.kind === "task"
+                ? renderChecklist(task, index)
+                : `<div class="text">${escapeHtml(task.text)}</div>`}
               <div class="task-meta">
                 <span class="kind-chip">${kindLabel(task.kind)}</span>
                 <select class="bucket-move" data-act="bucket" data-idx="${index}" aria-label="bucketの変更">
@@ -476,7 +531,6 @@
           const interactive = event.target.closest("button, select, input");
           if (interactive) return;
           if (task.kind !== "task") return;
-          toggle(index);
         });
 
         ul.appendChild(li);
@@ -513,7 +567,14 @@
         done: false,
         ts: Date.now(),
         bucket: normalizeBucket(bucketInput.value),
-        kind: normalizeKind(kindInput.value)
+        kind: normalizeKind(kindInput.value),
+        items: normalizeKind(kindInput.value) === "task"
+          ? String(text)
+            .split("\n")
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .map((line) => ({ text: line, done: false }))
+          : []
       });
       save(tasks);
 
@@ -614,11 +675,19 @@
       updateVoiceButton();
     }
 
-    function toggle(idx) {
+    function refreshTaskDone(task) {
+      if (task.kind !== "task") return task;
+      task.done = task.items.length > 0 && task.items.every((item) => item.done);
+      return task;
+    }
+
+    function toggleItem(idx, itemIdx) {
       const tasks = load();
       if (!tasks[idx]) return;
       if (tasks[idx].kind !== "task") return;
-      tasks[idx].done = !tasks[idx].done;
+      if (!tasks[idx].items[itemIdx]) return;
+      tasks[idx].items[itemIdx].done = !tasks[idx].items[itemIdx].done;
+      refreshTaskDone(tasks[idx]);
       save(tasks);
       render();
     }
@@ -702,9 +771,9 @@
     });
 
     document.addEventListener("change", (event) => {
-      const checkbox = event.target.closest("input[data-act='toggle-check']");
+      const checkbox = event.target.closest("input[data-act='toggle-check-item']");
       if (checkbox) {
-        toggle(Number(checkbox.dataset.idx));
+        toggleItem(Number(checkbox.dataset.idx), Number(checkbox.dataset.itemIdx));
         return;
       }
 
